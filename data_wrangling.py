@@ -6,7 +6,10 @@ import matplotlib.pyplot as plt
 from scipy import stats
 import scipy.signal as scisig
 import scipy.stats
-import cvxEDA
+import sys
+sys.path.append('/fd24T/zzhao3/EDA/cvxEDA/src')  # Adjust path as needed
+from cvxEDA import cvxEDA
+import argparse
 
 # E4 (wrist) Sampling Frequencies
 fs_dict = {'ACC': 32, 'BVP': 64, 'EDA': 4, 'TEMP': 4, 'label': 700, 'Resp': 700}
@@ -26,7 +29,7 @@ if not os.path.exists(savePath + subject_feature_path):
 def eda_stats(y):
     Fs = fs_dict['EDA']
     yn = (y - y.mean()) / y.std()
-    [r, p, t, l, d, e, obj] = cvxEDA.cvxEDA(yn, 1. / Fs)
+    [r, p, t, l, d, e, obj] = cvxEDA(yn, 1. / Fs)
     return [r, p, t, l, d, e, obj]
 
 
@@ -206,7 +209,7 @@ def get_samples(data, n_windows, label):
             feat_names = []
             for row in x.index:
                 for col in x.columns:
-                    feat_names.append('_'.join([row, col]))
+                    feat_names.append('_'.join([str(row), str(col)]))
 
         # sample df
         wdf = pd.DataFrame(x.values.flatten()).T
@@ -221,12 +224,47 @@ def get_samples(data, n_windows, label):
     return pd.concat(samples)
 
 
+def get_raw_data(subject_id):
+    # Make subject data object for Sx
+    subject = SubjectData(main_path='/fd24T/zzhao3/EDA/data/WESAD', subject_number=subject_id)
+    
+    # Get wrist and chest data
+    wrist_data = subject.get_wrist_data()
+    chest_data = subject.get_chest_data()
+    
+    # Create dataframes
+    bvp_df = pd.DataFrame(wrist_data['BVP'], columns=['BVP'])
+    acc_wrist_df = pd.DataFrame(wrist_data['ACC'], columns=['ACC_x_wrist', 'ACC_y_wrist', 'ACC_z_wrist'])
+    eda_df = pd.DataFrame(wrist_data['EDA'], columns=['EDA'])
+    temp_df = pd.DataFrame(wrist_data['TEMP'], columns=['TEMP'])
+    
+    ecg_df = pd.DataFrame(chest_data['ECG'], columns=['ECG'])
+    acc_chest_df = pd.DataFrame(chest_data['ACC'], columns=['ACC_x_chest', 'ACC_y_chest', 'ACC_z_chest'])
+    
+    # Combine dataframes with different sampling rates through interpolation
+    # For simplicity, we can align to a common time index, but this may not be ideal for all analyses
+    # Here, we will just save them as separate CSVs for now
+    
+    output_path = os.path.join(savePath, f'S{subject_id}_raw_data')
+    if not os.path.exists(output_path):
+        os.makedirs(output_path)
+        
+    bvp_df.to_csv(os.path.join(output_path, 'bvp.csv'))
+    acc_wrist_df.to_csv(os.path.join(output_path, 'acc_wrist.csv'))
+    eda_df.to_csv(os.path.join(output_path, 'eda.csv'))
+    temp_df.to_csv(os.path.join(output_path, 'temp.csv'))
+    ecg_df.to_csv(os.path.join(output_path, 'ecg.csv'))
+    acc_chest_df.to_csv(os.path.join(output_path, 'acc_chest.csv'))
+
+    print(f'Raw data for S{subject_id} saved to {output_path}')
+
+
 def make_patient_data(subject_id):
     global savePath
     global WINDOW_IN_SECONDS
 
     # Make subject data object for Sx
-    subject = SubjectData(main_path='data/WESAD', subject_number=subject_id)
+    subject = SubjectData(main_path='/fd24T/zzhao3/EDA/data/WESAD', subject_number=subject_id)
 
     # Empatica E4 data - now with resp
     e4_data_dict = subject.get_wrist_data()
@@ -274,7 +312,7 @@ def combine_files(subjects):
 
     df = pd.concat(df_list)
 
-    df['label'] = (df['0'].astype(str) + df['1'].astype(str) + df['2'].astype(str)).apply(lambda x: x.index('1'))
+    df['label'] = df[['0', '1', '2']].idxmax(axis=1).astype(int)
     df.drop(['0', '1', '2'], axis=1, inplace=True)
 
     df.reset_index(drop=True, inplace=True)
@@ -289,11 +327,30 @@ def combine_files(subjects):
 
 if __name__ == '__main__':
 
+    parser = argparse.ArgumentParser(description='Process WESAD dataset.')
+    parser.add_argument(
+        '--mode', type=str, default='all', choices=['features', 'raw', 'all'],
+        help='Processing mode: "features" for feature extraction, "raw" for raw data export, "all" to run both.'
+    )
+    args = parser.parse_args()
+
     subject_ids = [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 14, 15, 16, 17]
 
-    for patient in subject_ids:
-        print(f'Processing data for S{patient}...')
-        make_patient_data(patient)
+    if args.mode in ['raw', 'all']:
+        print("\n--- Starting Raw Data Extraction ---")
+        for patient in subject_ids:
+            print(f'Extracting raw data for S{patient}...')
+            get_raw_data(patient)
+        print('Raw data extraction complete.')
+        print("------------------------------------")
 
-    combine_files(subject_ids)
-    print('Processing complete.')
+    if args.mode in ['features', 'all']:
+        print("--- Starting Feature Extraction ---")
+        for patient in subject_ids:
+            print(f'Processing features for S{patient}...')
+            make_patient_data(patient)
+        combine_files(subject_ids)
+        print('Feature extraction complete.')
+        print("---------------------------------")
+
+    
