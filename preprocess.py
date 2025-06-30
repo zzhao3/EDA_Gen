@@ -151,11 +151,18 @@ def get_filtered_signal(data, f_low, f_high, fs=TARGET_FS, order=4):
 def filter_signals(signals_df):
     """Step 2: Apply band-pass filters to clean the signals."""
     filtered_df = signals_df.copy()
+
+    if 'eda' in filtered_df:
+        nyquist = 0.5 * TARGET_FS
+        # --- tonic removal (first-order high-pass) ---
+        eda_hp = get_filtered_signal(filtered_df['eda'].values.ravel(),
+                                      f_low=0.05, f_high=nyquist-0.5,
+                                      order=1)
+        # --- keep phasic energy up to 1 Hz ---
+        filtered_df['eda'] = get_filtered_signal(eda_hp, 0.05, 1.0)
     
-    if 'eda' in filtered_df: filtered_df['eda'] = get_filtered_signal(filtered_df['eda'].values.ravel(), 0.05, 1.0)
     if 'bvp' in filtered_df: filtered_df['bvp'] = get_filtered_signal(filtered_df['bvp'].values.ravel(), 0.5, 2.0)
     if 'ecg' in filtered_df: filtered_df['ecg'] = get_filtered_signal(filtered_df['ecg'].values.ravel(), 0.5, 40.0)
-    if 'temp' in filtered_df: filtered_df['temp'] = get_filtered_signal(filtered_df['temp'].values.ravel(), 0.01, 0.2)
 
     acc_wrist_cols = ['acc_wrist_x', 'acc_wrist_y', 'acc_wrist_z']
     if all(c in filtered_df for c in acc_wrist_cols):
@@ -171,17 +178,26 @@ def filter_signals(signals_df):
 def create_windows(signals_df):
     """Steps 3 & 4: Create overlapping windows and assign a label to each."""
     
+    # Pre-emptively drop all transient data points
+    signals_df = signals_df[signals_df['label'] != 0].copy()
+    
     window_len = int(WINDOW_SECONDS * TARGET_FS)
     stride_len = int(STRIDE_SECONDS * TARGET_FS)
     
     windows = []
     labels = []
     
-    # WESAD labels: 0=transient, 1=baseline, 2=stress, 3=amusement, 4=meditation
-    # We only want to create windows for baseline, stress, and amusement
+    # WESAD labels: 1=baseline, 2=stress, 3=amusement
     valid_labels = {1, 2, 3}
     
-    data_matrix = signals_df.drop(columns=['label']).values
+    feature_cols = [col for col in signals_df.columns if col != 'label']
+    indices_to_check = []
+    if 'ecg' in feature_cols:
+        indices_to_check.append(feature_cols.index('ecg'))
+    if 'bvp' in feature_cols:
+        indices_to_check.append(feature_cols.index('bvp'))
+
+    data_matrix = signals_df[feature_cols].values
     label_array = signals_df['label'].values.ravel()
     
     for i in range(0, len(signals_df) - window_len + 1, stride_len):
@@ -195,6 +211,14 @@ def create_windows(signals_df):
             
             # This is a clean, valid window
             window_data = data_matrix[i : i + window_len, :]
+
+            # Discard window if ECG or BVP signal is flat
+            if indices_to_check:
+                flat_thresh = 0.02 # z-units std below which we call it flat
+                win_std = window_data[:, indices_to_check].std(axis=0)
+                if (win_std < flat_thresh).any():
+                    continue # skip this window
+            
             majority_label = unique_labels[0]
             
             windows.append(window_data)

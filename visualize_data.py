@@ -18,7 +18,7 @@ LABEL_DICT = {
 def plot_fold_data(fold_number):
     """
     Loads a preprocessed data fold and plots a few random samples
-    from the test set.
+    from the test set, creating a separate plot for each label.
     """
     # 1. Construct the file path and load the data
     file_path = os.path.join(PREPROCESSED_DIR, f'fold_{fold_number}.npz')
@@ -39,72 +39,108 @@ def plot_fold_data(fold_number):
     L_test = data['L_test']
     feature_names = data['feature_names']
 
+    # Find temp index if it exists, to be used for all plots in this fold
+    temp_idx = -1
+    try:
+        temp_idx = np.where(feature_names == 'temp')[0][0]
+    except IndexError:
+        print("Info: 'temp' signal not found in features. It will not be plotted on a separate axis.")
+
     # --- Print the signal names ---
     print("\nPlotting the following signals:")
     for name in feature_names:
         print(f"  - {name}")
-    print("  - Target EDA (on separate axis)\n")
+    print("  - Target EDA (on separate axis)")
     # --------------------------------
 
     if X_test.size == 0:
         print("No test data available in this fold to plot.")
         return
-        
-    # 3. Select random samples to visualize
-    num_test_samples = X_test.shape[0]
-    if num_test_samples == 0:
-        print("No samples in the test set.")
-        return
-        
-    plot_indices = np.random.choice(
-        num_test_samples,
-        size=min(NUM_SAMPLES_TO_PLOT, num_test_samples),
-        replace=False
-    )
-    
-    print(f"Plotting {len(plot_indices)} random samples...")
 
-    # 4. Create the plots
-    fig, axes = plt.subplots(
-        len(plot_indices), 1, 
-        figsize=(12, 3 * len(plot_indices)), 
-        sharex=True
-    )
-    if len(plot_indices) == 1:
-        axes = [axes] # Ensure axes is always iterable
+    # Create base output directory for the fold
+    output_dir = os.path.join('figures', f'fold_{fold_number}')
+    os.makedirs(output_dir, exist_ok=True)
 
     time_axis = np.linspace(0, X_test.shape[1] / FS, num=X_test.shape[1])
 
-    for i, sample_idx in enumerate(plot_indices):
-        ax = axes[i]
-        
-        # Plot input signals (X_test)
-        for feature_idx in range(X_test.shape[2]):
-            ax.plot(time_axis, X_test[sample_idx, :, feature_idx], label=feature_names[feature_idx])
-            
-        ax.legend(loc='upper right')
-        ax.set_ylabel('Input Signals (Z-scored)')
-        
-        # Plot target EDA signal (Y_test) on a secondary y-axis
-        ax2 = ax.twinx()
-        ax2.plot(time_axis, Y_test[sample_idx, :], 'k--', linewidth=2, label='Target EDA')
-        ax2.legend(loc='lower right')
-        ax2.set_ylabel('Target EDA (Z-scored)')
-        
-        # Set title with the sample's label
-        label_int = L_test[sample_idx]
-        label_str = LABEL_DICT.get(label_int, 'Unknown')
-        ax.set_title(f'Test Sample #{sample_idx} - Label: {label_str} ({label_int})')
+    # 3. Iterate through each label to create a plot
+    for label_int, label_name in LABEL_DICT.items():
+        # Find indices for the current label
+        indices_for_label = np.where(L_test == label_int)[0]
 
-    axes[-1].set_xlabel('Time (s)')
-    fig.tight_layout()
-    plt.savefig(f'fold_{fold_number}.png')
+        if len(indices_for_label) == 0:
+            print(f"\nInfo: No test samples for label '{label_name}' ({label_int}). Skipping plot.")
+            continue
+
+        # Choose up to 4 samples
+        num_to_select = min(NUM_SAMPLES_TO_PLOT, len(indices_for_label))
+        if len(indices_for_label) < NUM_SAMPLES_TO_PLOT:
+            print(f"Warning: Only {len(indices_for_label)} samples for label '{label_name}'. "
+                  f"Plotting all of them.")
+
+        plot_indices = np.random.choice(
+            indices_for_label, size=num_to_select, replace=False
+        )
+
+        print(f"\nPlotting {len(plot_indices)} samples for label '{label_name}'...")
+
+        # 4. Create the plot for the current label
+        fig, axes = plt.subplots(
+            len(plot_indices), 1,
+            figsize=(12, 3 * len(plot_indices)),
+            sharex=True
+        )
+        if len(plot_indices) == 1:
+            axes = [axes]  # Ensure axes is always iterable
+
+        fig.suptitle(f'Test Samples for Label: {label_name}', fontsize=16)
+
+        for i, sample_idx in enumerate(plot_indices):
+            ax = axes[i]
+
+            # Plot input signals (X_test), excluding temp
+            for feature_idx in range(X_test.shape[2]):
+                if feature_idx == temp_idx:
+                    continue
+                ax.plot(time_axis, X_test[sample_idx, :, feature_idx], label=feature_names[feature_idx])
+
+            ax.legend(loc='upper left')
+            ax.set_ylabel('Input Signals (Z-scored)')
+
+            # Plot target EDA signal (Y_test) on a secondary y-axis
+            ax2 = ax.twinx()
+            ax2.plot(time_axis, Y_test[sample_idx, :], 'k--', linewidth=2, label='Target EDA')
+            ax2.legend(loc='upper right')
+            ax2.set_ylabel('Target EDA (Z-scored)')
+
+            # Plot temp signal on a third y-axis if found
+            if temp_idx != -1:
+                ax3 = ax.twinx()
+                # Offset the new spine to prevent overlap
+                ax3.spines['right'].set_position(('outward', 60))
+                
+                temp_line, = ax3.plot(time_axis, X_test[sample_idx, :, temp_idx], 'm-', linewidth=2, label='Temp')
+                ax3.set_ylabel('Temp (Z-scored)', color=temp_line.get_color())
+                ax3.tick_params(axis='y', colors=temp_line.get_color())
+                ax3.legend(handles=[temp_line], loc='lower right')
+
+            # Set title for the subplot
+            ax.set_title(f'Test Sample #{sample_idx}')
+
+        axes[-1].set_xlabel('Time (s)')
+        fig.tight_layout(rect=[0, 0.03, 1, 0.95])  # Adjust layout for suptitle
+
+        # Save the figure
+        save_path = os.path.join(output_dir, f'{label_name}_samples.png')
+        plt.savefig(save_path)
+        print(f"Saved plot to {save_path}")
+        plt.close(fig)  # Close the figure to free up memory
 
 
 def main():
     """Main function to parse arguments and trigger plotting."""
     parser = argparse.ArgumentParser(
-        description="Visualize preprocessed WESAD data from a specific fold."
+        description="Visualize preprocessed WESAD data from a specific fold, creating separate plots for each label."
     )
     parser.add_argument(
         'fold_number', type=int,
