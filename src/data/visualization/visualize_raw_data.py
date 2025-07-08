@@ -82,6 +82,10 @@ def plot_raw_subject_data(subject_id):
     with open(pkl_path, 'rb') as file:
         pkl_data = pickle.load(file, encoding='latin1')
     labels = pkl_data['label'].ravel()
+
+    # print the label distribution
+    from collections import Counter
+    print(f"Label distribution: {Counter(labels)}")
     
     if not signals:
         print("Error: No signals were loaded. Aborting plot.")
