@@ -1,7 +1,7 @@
 import numpy as np
 
 # ── 1.  Path to the .npz fold you want to inspect ─────────────────────────
-fold_path = "/fd24T/zzhao3/EDA/preprocessed_data/fold_2.npz"        # adapt as needed
+fold_path = "/fd24T/zzhao3/EDA/preprocessed_data/60s_0.25s/fold_2.npz"        # adapt as needed
 
 # ── 2.  Load the archive ──────────────────────────────────────────────────
 with np.load(fold_path, allow_pickle=True) as data:
