@@ -1,0 +1,24 @@
+name: dl
+channels:
+  - conda-forge
+  - nvidia
+  - pytorch
+  - defaults
+dependencies:
+  - python=3.11
+  - torchaudio==2.5.1
+  - pytorch==2.5.1
+  - torchvision==0.20.1
+  - jupyterlab
+  - ipywidgets
+  - scikit-learn
+  - seaborn
+  - numpy
+  - matplotlib
+  - scipy
+  - pandas
+  - cvxopt
+  - tmux
+  - tqdm
+  - pytorch-cuda=11.8
+prefix: /fd24T/zzhao3/miniconda3/envs/dl
