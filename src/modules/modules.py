@@ -84,18 +84,18 @@ class UNet_1D(nn.Module):
 
         # --- Bottleneck ---
         self.mid_block1 = Block(512, 1024, time_emb_dim)
-        self.mid_block2 = Block(1024, 512, time_emb_dim)
+        self.mid_block2 = Block(1024, 1024, time_emb_dim)
 
         # --- Decoder (Upsampling Path) ---
         self.up_blocks = nn.ModuleList([
-            Block(1024, 256, time_emb_dim),
-            Block(512, 128, time_emb_dim),
-            Block(256, 64, time_emb_dim)
+            Block(1024 + 512, 512, time_emb_dim),
+            Block(512  + 256, 256, time_emb_dim),
+            Block(256  + 128,  64, time_emb_dim)
         ])
         self.up_samplers = nn.ModuleList([
+            Upsample(1024),
             Upsample(512),
-            Upsample(256),
-            Upsample(128)
+            Upsample(256)
         ])
 
         # --- Final Output ---

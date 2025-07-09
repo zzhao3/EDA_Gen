@@ -42,16 +42,10 @@ class EDADiffusion:
         """
         return torch.linspace(self.beta_start, self.beta_end, self.noise_steps)
 
-    def noise_signals(self, x, t):
+    def q_sample(self, x, t):
         """
         Adds Gaussian noise to a batch of signals at a specific timestep 't' (forward process).
-
-        Args:
-            x (torch.Tensor): The input signals, shape `(batch, channels, sequence_length)`.
-            t (torch.Tensor): A tensor of timesteps for each signal in the batch.
-
-        Returns:
-            tuple: A tuple containing the noised signals and the noise that was added.
+        (Formerly noise_signals)
         """
         # Ensure x is on the correct device
         x = x.to(self.device)
@@ -78,22 +72,25 @@ class EDADiffusion:
         """
         return torch.randint(low=1, high=self.noise_steps, size=(n,))
 
-    def sample(self, model, n):
+    def sample(self, model, n, x_start=None):
         """
         Generates new signals by sampling from the diffusion model (reverse process).
 
         Args:
-            model: The trained U-Net or similar model that predicts noise.
+            model: The trained U-Net model.
             n (int): The number of new signals to generate.
-
-        Returns:
-            torch.Tensor: The generated signals, shape `(n, channels, sequence_length)`.
+            x_start (torch.Tensor, optional): A starting tensor for the reverse process. 
+                                              If None, starts from pure Gaussian noise.
         """
-        logging.info(f"Sampling {n} new signals....")
+        logging.info(f"Sampling {n} new signals...")
         model.eval()
         with torch.no_grad():
-            # Start with random noise
-            x = torch.randn((n, self.num_channels, self.sequence_length)).to(self.device)
+            # Start with random noise or a provided tensor
+            if x_start is not None:
+                x = x_start.to(self.device)
+                assert x.shape == (n, self.num_channels, self.sequence_length)
+            else:
+                x = torch.randn((n, self.num_channels, self.sequence_length)).to(self.device)
             
             # Denoise step-by-step from T to 1
             for i in tqdm(reversed(range(1, self.noise_steps)), position=0):
@@ -120,5 +117,4 @@ class EDADiffusion:
                 
         model.train()
         
-        # Clamp the output to be in a reasonable range (e.g., -1 to 1 for normalized signals)
         return x.clamp(-1, 1) 
