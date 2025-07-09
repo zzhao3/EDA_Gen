@@ -48,7 +48,7 @@ def get_config():
         epochs=100,
         batch_size=16,
         seed=42,
-        device="cuda" if torch.cuda.is_available() else "cpu",
+        device="cuda:1" if torch.cuda.is_available() else "cpu", # Default to GPU 1
         lr=1e-4,
         noise_steps=1000,
         sequence_length=3840, # 60s * 64Hz
@@ -285,7 +285,7 @@ def main():
     parser.add_argument('--run_name', type=str, default=datetime.now().strftime("%Y%m%d_%H%M%S"))
     parser.add_argument('--epochs', type=int, default=config.epochs)
     parser.add_argument('--batch_size', type=int, default=config.batch_size)
-    parser.add_argument('--device', type=str, default=config.device)
+    parser.add_argument('--device', type=str, default=config.device, help="Specify the device (e.g., 'cuda:0', 'cuda:1', 'cpu')")
     parser.add_argument('--lr', type=float, default=config.lr)
     parser.add_argument('--dataset_path', type=str, default=config.dataset_path)
     parser.add_argument('--fold_for_training', type=int, default=config.fold_for_training, help="The fold number to train on (e.g., 17 loads fold_17.npz).")
